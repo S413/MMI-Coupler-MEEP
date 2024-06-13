@@ -59,7 +59,7 @@ def main():
     # define the arguments here
     parser.add_argument('structure', choices=['straight_waveguide', 'tapered_waveguide', 'min_waveguide', 'min_straight',
                                               'min_waveguide_steady'],
-                        help='Structure choice: straight waveguide for normalization, or waveguide MMI coupler.')
+                        help='One of straight_waveguide, tapered_waveguide, min_waveguide, min_straight, min_waveguide_steady')
     parser.add_argument('--plot', action='store_true', help='Generate plot of simulation cell.', default=False)
     parser.add_argument('--gif', action='store_true', help='Generate animation of simulation.', default=False)
     args = parser.parse_args()  
@@ -345,8 +345,8 @@ def main():
         # this will not really decay if its continuous
         # sim.run(until=170)
         
-        res1 = sim.get_eigenmode_coefficients(transmissionMonitor1,[1],eig_parity=mp.ODD_Z)
-        res2 = sim.get_eigenmode_coefficients(transmissionMonitor2, [1], eig_parity=mp.ODD_Z)
+        res1 = sim.get_eigenmode_coefficients(transmissionMonitor1,[1],eig_parity=mp.EVEN_Z)
+        res2 = sim.get_eigenmode_coefficients(transmissionMonitor2, [1], eig_parity=mp.EVEN_Z)
         coeffs1 = res1.alpha
         coeffs2 = res2.alpha
         
@@ -405,7 +405,7 @@ def main():
                                                                 mp.Vector3(-0.5*sx+dpml_x+0.5*minWgL), 1e-2))
         # sim.run(until=120)
         
-        res = sim.get_eigenmode_coefficients(incidentFluxMonitor,[1],eig_parity=mp.ODD_Z)
+        res = sim.get_eigenmode_coefficients(incidentFluxMonitor,[1],eig_parity=mp.EVEN_Z)
         incident_coeffs = res.alpha
         
         incidentFlux = mp.get_fluxes(incidentFluxMonitor)[0]
@@ -451,7 +451,7 @@ def main():
             animation_fun(sim, 
                           'min_straight_waveguide_2D.gif', 
                           gifMonComp,
-                          mp.Vector3(0.5*sx-dpml_x-0.5*minWgL),1e-2)
+                          mp.Vector3(0.5*sx-dpml_x-0.5*minWgL))
             
     elif args.structure == 'min_waveguide_steady':
         minWgL = 1.0
