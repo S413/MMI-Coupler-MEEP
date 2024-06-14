@@ -13,7 +13,7 @@ import numpy as np
 
 # TODO. This file too long and cluttered. Fix.
 
-def define_source(src_point, center_freq, waveguide_width):
+def define_eigen_source(src_point, center_freq, waveguide_width):
     sources = [mp.EigenModeSource(src=mp.GaussianSource(center_freq, 0.1),
                               center=src_point,
                               size=mp.Vector3(y=4*waveguide_width),
@@ -27,6 +27,13 @@ def define_cont_source(src_point, center_freq, waveguide_width):
                          center=src_point,
                          size=mp.Vector3(y=waveguide_width),
                          component=mp.Ez)]
+    return sources
+
+def define_source(src_point, center_freq, waveguide_width):
+    sources = [mp.Source(mp.GaussianSource(center_freq, 0.1),
+                         component=mp.Ez,
+                         center=src_point,
+                         size=mp.Vector3(0,waveguide_width,0))]
     return sources
 
 # function to obtain the E-Field after x timesteps.
@@ -68,6 +75,8 @@ def main():
     resolution = 80 # pixels per micron
     wavelength0 = 1.55 # 1550 nm
     f_meep = 1.0 / wavelength0
+    df = 0.1 # based on current source
+    nfreq = 100 # baased on current source
     
     Lmmi = 11.5 # Length of the MMI coupler
     Wmmi = 3.6 # width of the MMI coupler
@@ -124,10 +133,9 @@ def main():
             default_material=SiO2)
         
         # adding monitors to the simulation
-        nfreq = 200
         incidentFluxRegion = mp.FluxRegion(center=mp.Vector3(-0.5*sx+dpml_x+Sli+1.0,),
                                            size=mp.Vector3(y=2*Wt))
-        incidentFluxMonitor = sim.add_flux(f_meep, 0, 1, incidentFluxRegion) 
+        incidentFluxMonitor = sim.add_flux(f_meep, 0.1, nfreq, incidentFluxRegion) 
         
         # incident run
         sim.run(until_after_sources=mp.stop_when_fields_decayed(50,fluxMonComp,mp.Vector3(0.5*sx-dpml_x-Sli),1e-5))
@@ -146,11 +154,11 @@ def main():
         
         transmissionFluxRegion = mp.FluxRegion(center=mp.Vector3(0.5*sx-dpml_x-Sli),
                                                size=mp.Vector3(y=2*Wt))
-        transmissionFluxMonitor = sim.add_flux(f_meep, 0, 1, transmissionFluxRegion)
+        transmissionFluxMonitor = sim.add_flux(f_meep, 0.1, nfreq, transmissionFluxRegion)
         
         reflectionFluxRegion = incidentFluxRegion
         
-        reflectionMonitor = sim.add_flux(f_meep, 0, 1, reflectionFluxRegion)
+        reflectionMonitor = sim.add_flux(f_meep, 0.1, nfreq, reflectionFluxRegion)
         
         sim.load_minus_flux_data(reflectionMonitor, incident_flux_data)
         
@@ -224,20 +232,19 @@ def main():
         # we need incident again
         incidentFluxRegion = mp.FluxRegion(center=mp.Vector3(-0.5*sx+dpml_x+Sli+1.0,),
                                            size=mp.Vector3(y=2*Wt))
-        incidentFluxMonitor = sim.add_flux(f_meep, 0, 1, incidentFluxRegion)
+        incidentFluxMonitor = sim.add_flux(f_meep, 0.1, nfreq, incidentFluxRegion)
         
         # add transmission monitors on either arm
-        nfreq=200
         transmissionFluxRegion1 = mp.FluxRegion(center=mp.Vector3(-0.5*Li+Lmmi*0.5+Li, (0.5*Wg+Wt-Wco)*0.5),
                                                 size=mp.Vector3(y=2*Wt))
         transmissionFluxRegion2 = mp.FluxRegion(center=mp.Vector3(-0.5*Li+Lmmi*0.5+Li, (-0.5*Wg-Wt+Wco)*0.5),
                                                 size=mp.Vector3(y=2*Wt))
         
-        transmissionFluxMonitor1 = sim.add_flux(f_meep, 0, 1, transmissionFluxRegion1)
-        transmissionFluxMonitor2 = sim.add_flux(f_meep, 0, 1, transmissionFluxRegion2)
+        transmissionFluxMonitor1 = sim.add_flux(f_meep, 0.1, nfreq, transmissionFluxRegion1)
+        transmissionFluxMonitor2 = sim.add_flux(f_meep, 0.1, nfreq, transmissionFluxRegion2)
         
         # add reflection monitor (same place as incident monitor)
-        reflectionMonitor = sim.add_flux(f_meep, 0, 1, incidentFluxRegion)
+        reflectionMonitor = sim.add_flux(f_meep, 0.1, nfreq, incidentFluxRegion)
         
         # I already have flux data saved to binary file from straight waveguide simulation. Load that
         with open('neg_flux.pickle', 'rb') as f:
@@ -326,9 +333,9 @@ def main():
         transmissionFluxRegion2 = mp.FluxRegion(center=mp.Vector3(Lmmi*0.5+0.5*minWgL,y=-0.5*Wg-Wco*0.5),
                                                 size=mp.Vector3(y=2*Wco))
         
-        reflectionMonitor = sim.add_flux(f_meep, 0, 1, reflectionFluxRegion)
-        transmissionMonitor1 = sim.add_flux(f_meep, 0, 1, transmissionFluxRegion1)
-        transmissionMonitor2 = sim.add_flux(f_meep, 0, 1, transmissionFluxRegion2)
+        reflectionMonitor = sim.add_flux(f_meep, df, nfreq, reflectionFluxRegion)
+        transmissionMonitor1 = sim.add_flux(f_meep, df, nfreq, transmissionFluxRegion1)
+        transmissionMonitor2 = sim.add_flux(f_meep, df, nfreq, transmissionFluxRegion2)
         
         with open('neg_flux_min.pickle', 'rb') as f:
             incident_flux_data = pickle.load(f)
@@ -350,21 +357,30 @@ def main():
         coeffs1 = res1.alpha
         coeffs2 = res2.alpha
         
-        transmissionFlux1 = mp.get_fluxes(transmissionMonitor1)[0]
-        transmissionFlux2 = mp.get_fluxes(transmissionMonitor2)[0]
-        reflectionFlux = mp.get_fluxes(reflectionMonitor)[0]
+        transmissionFlux1 = mp.get_fluxes(transmissionMonitor1)
+        transmissionFlux2 = mp.get_fluxes(transmissionMonitor2)
+        reflectionFlux = mp.get_fluxes(reflectionMonitor)
+        flux_freqs = mp.get_flux_freqs(reflectionMonitor)
         
         R1_coeffs = (abs(coeffs1[0,0,1])**2/abs(incident_coeffs[0,0,0])**2)
-        R1_flux = (-transmissionFlux1/incident_flux)
         
-        totalTransmission = (transmissionFlux1 + transmissionFlux2) / incident_flux
-        reflection = -reflectionFlux / incident_flux
+        T = list()
+        R = list()
+        Ws = list()
         
-        print(f"Transmissions: {transmissionFlux1},{transmissionFlux2}. Total: {totalTransmission}.")
-        print(f"Reflection: {reflectionFlux}. Total reflection: {reflection}.")
+        for i in range(nfreq):
+            Ws = np.append(Ws, 1/flux_freqs[i])
+            T = np.append(T, transmissionFlux1[i]/incident_flux[i] + transmissionFlux2[i]/incident_flux[i])
+            R = np.append(R, -reflectionFlux[i]/incident_flux[i])
         
-        print(f"Our R1 coeffs are: {R1_coeffs}")
-        print(f"Our R1_flux are: {R1_flux}")
+        plt.figure()
+        plt.plot(Ws, R, 'bo-', label='Reflectance')
+        plt.plot(Ws, T, 'ro-', label='Transmittance')
+        plt.plot(Ws, 1-R-T, 'go-', label='Loss')
+        plt.xlabel('Wavelength (microns)')
+        plt.legend()
+        plt.savefig('MinWaveguide_TRL.png')
+        plt.close()
         
         if args.plot:
             plot_it(sim, 'min_waveguide.png')
@@ -398,20 +414,22 @@ def main():
         
         incidentFluxRegion = mp.FluxRegion(center=mp.Vector3(-0.5*sx+dpml_x+0.5*minWgL),
                                            size=mp.Vector3(y=2*Wco))
+        incidentFluxMonitor = sim.add_flux(f_meep, df, nfreq, incidentFluxRegion)
         
-        incidentFluxMonitor = sim.add_flux(f_meep, 0, 1, incidentFluxRegion)
+        transmissionFluxRegion = mp.FluxRegion(center=mp.Vector3(0.5*sx-dpml_x-0.5*minWgL),
+                                               size=mp.Vector3(y=2*Wco))
+        transmissionMonitor = sim.add_flux(f_meep, df, nfreq, transmissionFluxRegion)
         
         sim.run(until_after_sources=mp.stop_when_fields_decayed(50, fluxMonComp,
-                                                                mp.Vector3(-0.5*sx+dpml_x+0.5*minWgL), 1e-2))
-        # sim.run(until=120)
+                                                                mp.Vector3(0.5*sx-dpml_x-0.5*minWgL), 1e-2))
         
         res = sim.get_eigenmode_coefficients(incidentFluxMonitor,[1],eig_parity=mp.EVEN_Z)
         incident_coeffs = res.alpha
         
-        incidentFlux = mp.get_fluxes(incidentFluxMonitor)[0]
+        incidentFlux = mp.get_fluxes(transmissionMonitor)
         incidentFluxData = sim.get_flux_data(incidentFluxMonitor)
         
-        print(f"Obtained incident flux: {incidentFlux}.")
+        print(f"Obtained incident flux: {[print(i) for i in incidentFlux]}.")
         
         with open('neg_flux_min.pickle', 'wb') as f:
             pickle.dump(incidentFluxData, f)
@@ -420,29 +438,6 @@ def main():
         with open('incident_coeffs_min.pickle', 'wb') as f:
             pickle.dump(incident_coeffs, f)
         
-        sim.restart_fields()
-        
-        transmissionFluxRegion = mp.FluxRegion(center=mp.Vector3(0.5*sx-dpml_x-0.5*minWgL),
-                                               size=mp.Vector3(y=2*Wco))
-        reflectionFluxRegion = incidentFluxRegion
-        
-        transmissionMonitor = sim.add_flux(f_meep, 0, 1, transmissionFluxRegion)
-        reflectionMonitor = sim.add_flux(f_meep, 0, 1, reflectionFluxRegion)
-        
-        sim.load_minus_flux_data(reflectionMonitor, incidentFluxData)
-        
-        sim.run(until_after_sources=mp.stop_when_fields_decayed(50, gifMonComp,
-                                                                mp.Vector3(0.5*sx-dpml_x-0.5*minWgL), 1e-2))
-        # sim.run(until=120)
-        
-        transmission = mp.get_fluxes(transmissionMonitor)[0]
-        reflection = mp.get_fluxes(reflectionMonitor)[0]
-        
-        T = transmission/incidentFlux
-        R = -reflection/incidentFlux
-        
-        print(f'Obtained: transmission: {transmission}, reflection: {reflection}.')
-        print(f'Normalized: {T},{R}')
         
         if args.plot:
             plot_it(sim, 'min_straight_waveguide.png')
@@ -462,11 +457,11 @@ def main():
         
         geometry = [mp.Block(center=mp.Vector3(x=-0.5*sx+0.5*dpml_x), material=Si, size=mp.Vector3(dpml_x,Wco)),
                     mp.Block(center=mp.Vector3(x=sx*-0.5+dpml_x+0.5*minWgL), material=Si, size=mp.Vector3(minWgL,Wco)),
-                    mp.Block(center=mp.Vector3(), material=Si, size=mp.Vector3(Lmmi,Wmmi))]
-                    # mp.Block(center=mp.Vector3(x=0+Lmmi*0.5+0.5*minWgL,y=0.5*Wg+Wco*0.5), material=Si, size=mp.Vector3(minWgL,Wco)),
-                    # mp.Block(center=mp.Vector3(x=0+Lmmi*0.5+0.5*minWgL,y=-0.5*Wg-Wco*0.5), material=Si, size=(minWgL,Wco)),
-                    # mp.Block(center=mp.Vector3(x=0.5*sx-0.5*dpml_x,y=0.5*Wg+Wco*0.5), material=Si, size=mp.Vector3(dpml_x,Wco)),
-                    # mp.Block(center=mp.Vector3(x=0.5*sx-0.5*dpml_x,y=-0.5*Wg-Wco*0.5), material=Si, size=mp.Vector3(dpml_x,Wco))]
+                    mp.Block(center=mp.Vector3(), material=Si, size=mp.Vector3(Lmmi,Wmmi)),
+                    mp.Block(center=mp.Vector3(x=0+Lmmi*0.5+0.5*minWgL,y=0.5*Wg+Wco*0.5), material=Si, size=mp.Vector3(minWgL,Wco)),
+                    mp.Block(center=mp.Vector3(x=0+Lmmi*0.5+0.5*minWgL,y=-0.5*Wg-Wco*0.5), material=Si, size=(minWgL,Wco)),
+                    mp.Block(center=mp.Vector3(x=0.5*sx-0.5*dpml_x,y=0.5*Wg+Wco*0.5), material=Si, size=mp.Vector3(dpml_x,Wco)),
+                    mp.Block(center=mp.Vector3(x=0.5*sx-0.5*dpml_x,y=-0.5*Wg-Wco*0.5), material=Si, size=mp.Vector3(dpml_x,Wco))]
         
         src_point = mp.Vector3(-0.5*sx+dpml_x+0.25*minWgL)
         # try continuous source, probably still need a eigenmodesource
@@ -477,8 +472,7 @@ def main():
         #             eig_parity=mp.EVEN_Z)]
         sources = [mp.Source(mp.ContinuousSource(frequency=f_meep, is_integrated=True),
                               component=mp.Ez,
-                              center=src_point,
-                              size=mp.Vector3(y=4*Wco))]
+                              center=src_point)]
         
         sim = mp.Simulation(
             resolution=resolution,
@@ -487,48 +481,25 @@ def main():
             boundary_layers=boundary_layers,
             sources=sources,
             default_material=SiO2,
-            force_complex_fields=True)
+            force_complex_fields=False)
         
-        # sim.run(mp.at_every(10, store_Efield), until=400)
         sim.run(until=400)
         
+        eps_data = sim.get_array(center=mp.Vector3(), size=cellSize, component=mp.Dielectric)
         last_field = sim.get_array(center=mp.Vector3(), size=cellSize, component=mp.Ez)
         
-        # efield = np.array(efield_data)
         last_field = np.array(last_field)
-        # meanfield = np.mean(efield, axis=0)
         
         plt.figure()
-        plt.imshow((np.abs(last_field.T)), interpolation='spline36', cmap='RdBu')
+        plt.imshow(eps_data.T, interpolation='spline36', cmap='binary')
+        plt.imshow(last_field.T, interpolation='spline36', cmap='RdBu', alpha=0.9)
+        plt.axis('off')
         plt.colorbar()
         plt.savefig('LastEField.png')
         plt.close()
         
         with open('lastEField.pickle', 'wb') as f:
             pickle.dump(last_field, f)
-            
-        # with open('Efield.pickle', 'wb') as f:
-        #     pickle.dump(efield_data, f)
-        
-        # we try the frequency domain solver which uses iterative methods (no run)
-        # num_tols = 1
-        # tols = np.power(10, np.arange(-8.0, -8.0-num_tols, -1.0))
-        
-        # # for i in range(num_tols):
-        # sim.init_sim()
-        # sim.solve_cw(1e-8, 10000, 10)
-        # ex_dat = sim.get_array(center=mp.Vector3(), size=mp.Vector3(int(sx*80),int(sy*80)), component=mp.Ex)
-            
-        
-        # eps_data = sim.get_array(center=mp.Vector3(), size=cellSize, component=mp.Dielectric)
-        # ex_data = np.absolute(ex_dat)
-        
-        # plt.figure()
-        # plt.imshow(eps_data.T, interpolation='spline36', cmap='binary')
-        # plt.imshow(ex_data.T, interpolation='spline36', cmap='Reds')
-        # plt.axis('off')
-        # plt.savefig('FDfields.png')
-        # plt.close()
         
 if __name__ == "__main__":
     main()
